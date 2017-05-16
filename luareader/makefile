@@ -1,13 +1,15 @@
+CROSS = /home/gexueyuan/bin/toolchain-mips_34kc_gcc-4.8-linaro_uClibc-0.9.33.2/bin/mips-openwrt-linux-
 CC   = $(CROSS)gcc
 CXX  = $(CROSS)g++
+OBJCOPY = $(CROSS)objcopy
 
-LOCAL_INCLUDE?=/usr/local/include
-LOCAL_LIB?=/usr/local/lib
-HOME_INCLUDE?=$(HOME)/include
+LOCAL_INCLUDE?=/home/gexueyuan/bin/toolchain-mips_34kc_gcc-4.8-linaro_uClibc-0.9.33.2/usr/include
+LOCAL_LIB?=/home/gexueyuan/bin/toolchain-mips_34kc_gcc-4.8-linaro_uClibc-0.9.33.2/usr/lib
+HOME_INCLUDE?=/home/gexueyuan/lua/src/
 HOME_LIB?=$(HOME)/lib
 
-USB_LIB?=$(LOCAL_LIB)/libusb-1.0.a
-LUA_LIB?=$(LOCAL_LIB)/liblua.a
+USB_LIB?=../libusb-1.0.a
+LUA_LIB?=../liblua.a
 MCRYPTO_LIB?=$(LOCAL_LIB)/mcrypto.a
 #export MCRYPTO_LIB=/home/pi/src/mcrypto/mcrypto.a
 
@@ -55,8 +57,14 @@ lua_arm:
 	objcopy -I binary -O elf32-littlearm -B arm reader.lua reader_lua.o
 	objcopy -I binary -O elf32-littlearm -B arm reader_shell.lua reader_shell_lua.o
 	
+lua_mips:
+	$(OBJCOPY) -I binary -O elf32-tradbigmips -B mips:isa32 reader_classes_usb.lua reader_classes_usb_lua.o
+	$(OBJCOPY) -I binary -O elf32-tradbigmips -B mips:isa32 reader.lua reader_lua.o
+	$(OBJCOPY) -I binary -O elf32-tradbigmips -B mips:isa32 reader_shell.lua reader_shell_lua.o
 test:
 	$(CC) test.c $(LIBNAME) -o test
+changeapp:
+	$(CC) changeapp.c $(LIBNAME) -o changeapp
 	
 $(OBJ) : %.o : %.c
 	$(CC) $(CFLAGS) -Dluaopen_module=luaopen_usb -c $< -o $@ $(INCLUDE) 

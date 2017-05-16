@@ -74,8 +74,21 @@ local function reader_classes_usb_init()
 			if devPath == _getDevBusPortNumbers(dev) then
 				local dd = chkret('dev:get_device_descriptor', dev:get_device_descriptor())
 				obj.interfaceNumber = 0
-				obj.outputEndpoint = 0x04
-				obj.inputEndpoint = 0x83
+				local cd = dev:get_config_descriptor(0)
+				local endpoint = cd.interface[1].altsetting[1].endpoint
+				if (#endpoint < 2) then
+					obj.outputEndpoint = 0x04
+					obj.inputEndpoint = 0x83
+				else
+					if ((endpoint[1].bEndpointAddress & 0x80) == 0x00) then
+						obj.outputEndpoint = endpoint[1].bEndpointAddress
+						obj.inputEndpoint = endpoint[2].bEndpointAddress
+					else
+						obj.outputEndpoint = endpoint[2].bEndpointAddress
+						obj.inputEndpoint = endpoint[1].bEndpointAddress
+					end
+				end	
+
 				obj.idVendor = dd.idVendor
 				obj.idProduct = dd.idProduct
 				
