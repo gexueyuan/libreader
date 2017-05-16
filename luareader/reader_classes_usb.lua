@@ -135,6 +135,10 @@ local function reader_classes_usb_init()
 		obj.fd = nil
 	end	
 	
+	function base.reset_device(obj)
+		assert(obj.fd:reset_device())
+	end
+	
 	--[hid] list,match,connect,disconnect,flush,write,read
 	function hid.list()
 		return base.list(0x0010)
@@ -150,8 +154,9 @@ local function reader_classes_usb_init()
 	
 	hid.connect = base.connect
 	hid.disconnect = base.disconnect
+	hid.reset_device = base.reset_device
 	
-	function hid.flush(obj)
+	function hid.flush(obj) --目前掌握知识无法实现该功能，2017-5-11
 	end	
 		
 	function hid.write(obj, data, timeout)
@@ -180,9 +185,11 @@ local function reader_classes_usb_init()
 	
 	scsi.connect = base.connect
 	scsi.disconnect = base.disconnect
+	scsi.reset_device = base.reset_device
 	
-	function scsi.write(obj, data, timeout)		
-		local result = chkret('[scsi]bulk_transfer', obj.fd:bulk_transfer(obj.outputEndpoint, '\x55\x53\x42\x43' .. '\x12\x34\x56\x78' .. string.pack("<I4", #data) .. '\x00' .. '\x00' .. '\x06\xF1' .. string.rep('\x00',15), timeout))
+	function scsi.write(obj, data, timeout)
+		local sequence = os.microsecond() & 0xFFFFFFFF	
+		local result = chkret('[scsi]bulk_transfer', obj.fd:bulk_transfer(obj.outputEndpoint, string.pack(">I4<I4I4", 0x55534243, sequence, #data) .. '\x00' .. '\x00' .. '\x06\xF1' .. string.rep('\x00',15), timeout))
 		assert(result==31, '[scsi]CBW result:' .. result .. ', error=[-1]')
 
 		local result = chkret('[scsi]bulk_transfer', obj.fd:bulk_transfer(obj.outputEndpoint, data, timeout))
@@ -190,20 +197,25 @@ local function reader_classes_usb_init()
 		
 		-- WSignature(4) + Tag(4-Rand) + DataResidue(4) + Status(1)
 		local result = chkret('[scsi]bulk_transfer', obj.fd:bulk_transfer(obj.inputEndpoint, 13, timeout))
-		assert(result:sub(1,4)=='\x55\x53\x42\x53', '[scsi]CSW signature error!, error=[-1]')
-		assert(result:sub(13,13)=='\x00', '[scsi]CSW status error!, error=[-1]')
+		local ws,tag,dr,status = string.unpack(">I4<I4I4B", result)
+		assert(ws==0x55534253, '[scsi]CSW signature error!, error=[-1]')
+		assert(tag==sequence, '[scsi]CSW tag error!, error=[-1]')
+		assert(status==0x00, '[scsi]CSW status error!, error=[-1]')
 	end
 
 	function scsi.read(obj, length, timeout)
-		local result = chkret('[scsi]bulk_transfer', obj.fd:bulk_transfer(obj.outputEndpoint, '\x55\x53\x42\x43' .. '\x12\x34\x56\x78' .. string.pack("<I4", 4096) .. '\x80' .. '\x00' .. '\x06\xF2' .. string.rep('\x00',15), timeout))
+		local sequence = os.microsecond() & 0xFFFFFFFF
+		local result = chkret('[scsi]bulk_transfer', obj.fd:bulk_transfer(obj.outputEndpoint, string.pack(">I4<I4I4", 0x55534243, sequence, 4096) .. '\x80' .. '\x00' .. '\x06\xF2' .. string.rep('\x00',15), timeout))
 		assert(result==31, '[scsi]CBW result:' .. result .. ', error=[-1]')
 		
 		local resp = chkret('[scsi]bulk_transfer', obj.fd:bulk_transfer(obj.inputEndpoint, length, timeout))
 
 		-- WSignature(4) + Tag(4-Rand) + DataResidue(4) + Status(1)
 		local result = chkret('[scsi]bulk_transfer', obj.fd:bulk_transfer(obj.inputEndpoint, 13, timeout))
-		assert(result:sub(1,4)=='\x55\x53\x42\x53', '[scsi]CSW signature error!, error=[-1]')
-		assert(result:sub(13,13)=='\x00', '[scsi]CSW status error!, error=[-1]')
+		local ws,tag,dr,status = string.unpack(">I4<I4I4B", result)
+		assert(ws==0x55534253, '[scsi]CSW signature error!, error=[-1]')
+		assert(tag==sequence, '[scsi]CSW tag error!, error=[-1]')
+		assert(status==0x00, '[scsi]CSW status error!, error=[-1]')
 
 		local validDataLen = (resp:byte(1, 1) << 8) + resp:byte(2, 2)
 		assert((2+validDataLen)==#resp, '[scsi] data length:' .. validDataLen .. ', error=[-1]')
@@ -217,14 +229,17 @@ local function reader_classes_usb_init()
 	
 	--[scsi] testReady
 	function scsi.testReady(obj, timeout)
+		local sequence = os.microsecond() & 0xFFFFFFFF
 		-- WSignature(4) + Tag(4-Rand) + DataTransferLength(4) + Flags(1-00/80) + LUN(1-00) + Length(1) + CB(16)
-		local result = chkret('[scsi]bulk_transfer', obj.fd:bulk_transfer(obj.outputEndpoint, '\x55\x53\x42\x43' .. '\x12\x34\x56\x78' .. '\x00\x00\x00\x00' .. '\x00' .. '\x00' .. '\x06' .. string.rep('\x00',16), timeout))
+		local result = chkret('[scsi]bulk_transfer', obj.fd:bulk_transfer(obj.outputEndpoint, string.pack(">I4<I4I4", 0x55534243, sequence, 0) .. '\x00' .. '\x00' .. '\x06' .. string.rep('\x00',16), timeout))
 		assert(result==31, '[scsi]CBW result:' .. result .. ', error=[-1]')
 
 		-- WSignature(4) + Tag(4-Rand) + DataResidue(4) + Status(1)
 		local result = chkret('bulk_transfer', obj.fd:bulk_transfer(obj.inputEndpoint, 13, timeout))
-		assert(result:sub(1,4)=='\x55\x53\x42\x53', '[scsi]CSW signature error!, error=[-1]')
-		assert(result:sub(13,13)=='\x00', '[scsi]CSW status error!, error=[-1]')
+		local ws,tag,dr,status = string.unpack(">I4<I4I4B", result)
+		assert(ws==0x55534253, '[scsi]CSW signature error!, error=[-1]')
+		assert(tag==sequence, '[scsi]CSW tag error!, error=[-1]')
+		assert(status==0x00, '[scsi]CSW status error!, error=[-1]')
 	end
 
 	
@@ -243,6 +258,7 @@ local function reader_classes_usb_init()
 	
 	pcsc.connect = base.connect
 	pcsc.disconnect = base.disconnect
+	pcsc.reset_device = base.reset_device
 	
 	function pcsc._write(obj, data, messageType, timeout)
 		if (not obj.sequence) or (obj.sequence == 0xFF) then
@@ -259,12 +275,15 @@ local function reader_classes_usb_init()
 		assert(result==#packet, '[pcsc]bulk_transfer result:' .. result .. ', error=[-1]')		
 	end
 	function pcsc._read(obj, dlength, timeout)		
-		local resp = chkret('[pcsc]bulk_transfer', obj.fd:bulk_transfer(obj.inputEndpoint, 10+dlength, timeout))
-
-		local messageType,length,slot,sequence,status,err,chainParameter = string.unpack('B<i4BBBBB', resp)
-		assert(sequence == obj.sequence, '[pcsc] sequence: ' .. sequence, 'error=[-1]')
-		assert((10+length) <= #resp, '[pcsc] data length: ' .. length, 'error=[-1]')
-		return status, resp:sub(11, 10+length)
+		while(true) do
+			local resp = chkret('[pcsc]bulk_transfer', obj.fd:bulk_transfer(obj.inputEndpoint, 10+dlength, timeout))
+			local messageType,length,slot,sequence,status,err,chainParameter = string.unpack('B<i4BBBBB', resp)
+			--assert(sequence == obj.sequence, '[pcsc] sequence: ' .. sequence, 'error=[-1]')
+			if (sequence == obj.sequence) then
+				assert((10+length) <= #resp, '[pcsc] data length: ' .. length, 'error=[-1]')
+				return status, resp:sub(11, 10+length)
+			end
+		end
 	end
 		
 	function pcsc.write(obj, data, timeout)
