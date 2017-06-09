@@ -761,7 +761,7 @@ BINDING(bulk_transfer)
 	int transferred;
 	unsigned int timeout;
 	int result;
-	int i;
+	// int i;
 	
 	dev_handle = luausb_check_device_handle(L, 1);
 	endpoint = (unsigned char)luaL_checknumber(L, 2); /* :FIXME: handle overflow */
@@ -790,19 +790,18 @@ BINDING(bulk_transfer)
 	}
 	
 	result = libusb_bulk_transfer(dev_handle, endpoint, data, length, &transferred, timeout);
-	if (result < 0 && result != LIBUSB_ERROR_TIMEOUT)
+	if (result < 0 /*&& result != LIBUSB_ERROR_TIMEOUT*/)
 		return lua__usberror(L, result);
 	
-	/* lua__usberror will push nil and error codes, replace the nil */
-	i = lua__usberror(L, result);
 	if (endpoint & LIBUSB_ENDPOINT_IN)
+	{
 		/* in endpoint */
 		lua_pushlstring(L, (char*)data, transferred);
+	}
 	else
 		/* out endpoint */
 		lua_pushinteger(L, transferred);
-	lua_replace(L, -1-i);
-	return i;
+	return 1;
 }
 
 BINDING(interrupt_transfer)
@@ -814,7 +813,7 @@ BINDING(interrupt_transfer)
 	int transferred;
 	unsigned int timeout;
 	int result;
-	int i = 0;
+	// int i = 0;
 	
 	dev_handle = luausb_check_device_handle(L, 1);
 	endpoint = (unsigned char)luaL_checknumber(L, 2); /* :FIXME: handle overflow */
@@ -843,25 +842,17 @@ BINDING(interrupt_transfer)
 	}
 	
 	result = libusb_interrupt_transfer(dev_handle, endpoint, data, length, &transferred, timeout);
-	if (result < 0 && result != LIBUSB_ERROR_TIMEOUT)
+	
+	if (result < 0 /*&& result != LIBUSB_ERROR_TIMEOUT*/)
 		return lua__usberror(L, result);
 	
-	/* lua__usberror will push nil and error codes, replace the nil */
-	if (result < 0)
-		i = lua__usberror(L, result);
 	if (endpoint & LIBUSB_ENDPOINT_IN)
 		/* in endpoint */
 		lua_pushlstring(L, (char*)data, transferred);
 	else
 		/* out endpoint */
 		lua_pushinteger(L, transferred);
-	if (result < 0)
-	{
-		lua_replace(L, -1-i);
-		return i;
-	}
-	else
-		return 1;
+	return 1;
 }
 
 BINDING(cpu_to_le16)

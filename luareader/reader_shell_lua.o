@@ -12,7 +12,7 @@ function connect(reader_name)
 end
 
 function transmit(apdu)
-	return assert(reader_obj:transmit(apdu, 3000))
+	return assert(reader_obj:transmit(apdu, 6000))
 end
 
 function disconnect()

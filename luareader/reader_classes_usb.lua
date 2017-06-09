@@ -298,16 +298,27 @@ local function reader_classes_usb_init()
 	function pcsc.read(obj, length, timeout)
 		while(true) do
 			local status,resp = pcsc._read(obj, length, timeout)
-			if status ~= 2 then --Procedure byte
+			if (status & 0xC0) ~= 0x80 then --Time Extension is requested
 				return resp
 			end
 		end
+--[[Slot Status register: 
+Offset Field Size         Value     Description 
+0 bmICCStatus (2 bit)    (0, 1, 2) 0 - An ICC is present and active (power is on and stable, RST is inactive) 
+                                   1 - An ICC is present and inactive (not activated or shut down by hardware error) 
+								   2 - No ICC is present 3 - RFU 
+2 -           (4 bits)    RFU 
+6 bmCommandStatus (2 bits)(0, 1, 2) 0 - Processed without error 
+									1 - Failed (error code provided by the error register) 
+									2 - Time Extension is requested 3 - RFU
+--]]		
 	end
 	
 
 	return {base, hid, scsi, pcsc}
 end
 
+			
 --[[
 function test(classes)
 	classes[1].print()
