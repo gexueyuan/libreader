@@ -60,9 +60,10 @@ LUAREADER_API int luareader_connect(void *context, const char * reader_name);
  context：上下文
  apdu(apdu_len)：APDU数据
  resp(max_resp_size,result)：指令执行结果
+ timeout：超时时间（ms）
  result：[>0]输出长度，[-1001]上下文无效，[-1,-6]执行脚本错误（必须调用一次luareader_pop_value获取错误信息）
 */
-LUAREADER_API int luareader_transmit(void *context, const unsigned char * apdu, int apdu_len, unsigned char * resp, int max_resp_size);
+LUAREADER_API int luareader_transmit(void *context, const unsigned char * apdu, int apdu_len, unsigned char * resp, int max_resp_size, int timeout);
 
 /* 断开读卡器的连接（内部调用luareader_do_task）
  context：上下文

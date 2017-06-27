@@ -213,9 +213,46 @@ LUAREADER_API int luareader_connect(void *context, const char * reader_name)
 	return luareader_do_task(context, "connect", (unsigned char *)reader_name, (int)strlen(reader_name), NULL, 0);
 }
 
-LUAREADER_API int luareader_transmit(void *context, const unsigned char * apdu, int apdu_len, unsigned char * resp, int max_resp_size)
+static int _lua_pop_value(lua_State* L, unsigned char * output, int max_output_size)
 {
-	return luareader_do_task(context, "transmit", apdu, apdu_len, resp, max_resp_size);
+	int ret = 0;
+	if (lua_gettop(L) > 0)
+	{
+		if (lua_isstring(L,-1) && (output != NULL))
+		{
+			size_t len = 0;
+			const char * ptr = luaL_checklstring(L, -1, &len);//从栈中取回返回值  
+
+			memcpy(output, ptr, ((int)len > max_output_size)? (int)max_output_size:len);
+			ret = (int)len;
+		}
+		lua_pop(L, 1);//清栈，由于当前只有一个返回值  
+	}
+	return ret;
+}
+
+LUAREADER_API int luareader_transmit(void *context, const unsigned char * apdu, int apdu_len, unsigned char * resp, int max_resp_size, int timeout)
+{
+	//return luareader_do_task(context, "transmit", apdu, apdu_len, resp, max_resp_size);
+	int ret = 0;
+	lua_State* L = (lua_State*)context;
+	if (L == NULL)
+	{
+		return -1001; // 上下文错误
+	}
+
+	lua_getglobal(L, "transmit"); //查找lua_add函数,并压入栈底 
+
+	lua_pushlstring(L, (const char*)apdu, apdu_len); //函数参数1  
+	lua_pushinteger(L, timeout); //函数参数2  
+
+	ret = lua_pcall(L, 2, LUA_MULTRET, 0);//调用lua_add函数，同时会对lua_add及两个参加进行出栈操作,并压入返回值  
+	if (ret != LUA_OK)
+	{
+		return (ret > 0)? (-ret) : ret;
+	}
+
+	return _lua_pop_value(L, resp, max_resp_size);
 }
 
 LUAREADER_API int luareader_disconnect(void *context)
@@ -242,19 +279,7 @@ LUAREADER_API int luareader_do_task(void *context, const char * tast_name, const
 		return (ret > 0)? (-ret) : ret;
 	}
 
-	if (lua_gettop(L) > 0)
-	{
-		if (output != NULL)
-		{
-			size_t len = 0;
-			const char * ptr = luaL_checklstring(L,-1, &len);//从栈中取回返回值  
-
-			memcpy(output, ptr, ((int)len > max_output_size)? (int)max_output_size:len);
-			ret = (int)len;
-		}
-		lua_pop(L, 1);//清栈，由于当前只有一个返回值  
-	}
-	return ret;
+	return _lua_pop_value(L, output, max_output_size);
 }
 
 
@@ -273,44 +298,22 @@ LUAREADER_API int luareader_do_string(void *context, const char * str, unsigned 
 		return (ret > 0)? (-ret) : ret;
 	}
 	  
-	if (lua_gettop(L))
-	{
-		if (output != NULL)
-		{
-			size_t len = 0;
-			const char * ptr = luaL_checklstring(L, -1, &len);//从栈中取回返回值  
-
-			memcpy(output, ptr, ((int)len > max_output_size)? (int)max_output_size:len);
-			ret = (int)len;
-		}
-		lua_pop(L, 1);//清栈，由于当前只有一个返回值  
-	}
-	return ret;
+	return _lua_pop_value(L, output, max_output_size);
 }
 
 LUAREADER_API int luareader_pop_value(void *context, char * value, int max_value_size)
 {
-	int ret = 0;
 	lua_State* L = (lua_State*)context;
 	if (L == NULL)
 	{
 		return -1001; // 上下文错误
 	}
-	else if (lua_gettop(L) <= 0)
+	if (lua_gettop(L) <= 0)
 	{
 		return -1003; // 空栈
 	}
 	else
 	{
-		if (lua_isstring(L,-1) && (value != NULL))
-		{
-			size_t len = 0;
-			const char * ptr = luaL_checklstring(L, -1, &len);//从栈中取回返回值  
-
-			memcpy(value, ptr, ((int)len > max_value_size)? (int)max_value_size:len);
-			ret = (int)len;
-		}
-		lua_pop(L, 1);//清栈，由于当前只有一个返回值  
-		return ret;
+		return _lua_pop_value(L, value, max_value_size);
 	}	
 }

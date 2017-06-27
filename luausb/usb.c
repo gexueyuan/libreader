@@ -788,7 +788,7 @@ BINDING(bulk_transfer)
 		data = (unsigned char*)lua_newuserdata(L, length);
 		memcpy(data, str, len);
 	}
-	
+
 	result = libusb_bulk_transfer(dev_handle, endpoint, data, length, &transferred, timeout);
 	if (result < 0 /*&& result != LIBUSB_ERROR_TIMEOUT*/)
 		return lua__usberror(L, result);

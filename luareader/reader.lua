@@ -4,10 +4,10 @@
 --[reader_protocol_hid] transmit
 local reader_protocol_hid = {}
 function reader_protocol_hid.transmit(obj, apdu, timeout)
-	local subProtocol = obj.subProtocol or obj
+	local subprot = obj.subprot or obj
 	timeout = timeout or obj.timeout
 	
-	subProtocol:flush()
+	subprot:flush()
 	
 	function send_packet(packet, timeout)
 		local totalLen = #packet
@@ -22,7 +22,7 @@ function reader_protocol_hid.transmit(obj, apdu, timeout)
 				currLen = 60
 				data = packet:sub(i, i+59)
 			end
-			subProtocol:write(string.pack(">I2BB", totalLen, packageID, currLen) .. data, timeout)
+			subprot:write(string.pack(">I2BB", totalLen, packageID, currLen) .. data, timeout)
 			packageID = packageID + 1
 		end
 	end
@@ -30,7 +30,7 @@ function reader_protocol_hid.transmit(obj, apdu, timeout)
 	function recv_packet(timeout)
 		local resp = ''
 		while true do
-			local result = subProtocol:read(64, timeout)
+			local result = subprot:read(64, timeout)
 
 			local totalLen, packageID, data = string.unpack(">I2Bs1", result)
 
@@ -51,11 +51,11 @@ end
 --[reader_protocol_default] transmit, execute
 local reader_protocol_default = {}
 function reader_protocol_default.transmit(obj, apdu, timeout)
-	local subProtocol = obj.subProtocol or obj
+	local subprot = obj.subprot or obj
 	timeout = timeout or obj.timeout
 
-	subProtocol:write(apdu, timeout)
-	return subProtocol:read(4096, timeout)
+	subprot:write(apdu, timeout)
+	return subprot:read(4096, timeout)
 end
 
 --内部处理SW，cond={SW='\x90\x00', getRespondApduHead='\x00\xC0\x00\x00'}
@@ -126,16 +126,16 @@ function reader_protocol_default.execute(obj, apdu, cond, timeout)
 	return resp:sub(1,#resp-2)
 end		
 	
---[reader] _classes, __gc
+--[reader] __gc
 local reader = {}
-reader._classes = (function()
+local function get_default_classes()
 	local env_os = os.getenv('OS')
 	if env_os and env_os:find('Windows') then --window
 		return require('reader_classes_win32')
 	else
 		return require('reader_classes_usb')
 	end
-end)()
+end
 
 function reader.__gc(obj)
 	if obj.fd then
@@ -143,15 +143,19 @@ function reader.__gc(obj)
 	end
 end
 
---[all class] __index, __gc, transmit, execute
-for _,cls in pairs(reader._classes) do
-	cls.__index = cls
-	cls.__gc = reader.__gc
-	if not cls.transmit then
-		cls.transmit = ((cls._type == 'hid') and reader_protocol_hid.transmit) or reader_protocol_default.transmit
+--[all class] _classes, __index, __gc, transmit, execute
+function reader.set_classes(classes)
+	reader._classes = classes
+	for _,cls in pairs(classes) do
+		cls.__index = cls
+		cls.__gc = reader.__gc
+		if not cls.transmit then
+			cls.transmit = ((cls._type == 'hid') and reader_protocol_hid.transmit) or reader_protocol_default.transmit
+		end
+		cls.execute = reader_protocol_default.execute
 	end
-	cls.execute = reader_protocol_default.execute
 end
+reader.set_classes(get_default_classes())
 
 --[reader] print,list,disconnect,transmit
 function reader.print()
@@ -206,14 +210,13 @@ function reader.connect(devName, options)
 end
 
 --options: {name='rsaencrypt', next={name='hexstring'}}
-function reader.create_protocol(obj, options)	
-	function _create(obj, opt)
-		if opt.name then
+function reader.create_protocol(obj, options)		
+	function _create(opt)
+		if (opt and opt.name) then
 			local protocol = require('reader_protocol_' .. opt.name)
-			local nobj = protocol.new(obj)
-			
+			local nobj = protocol.new(_create(opt.subopt));			
 			for k,v in pairs(opt) do
-				if k~='name' and k~='next' then
+				if k~='name' and k~='subopt' then
 					if (v:sub(1,1) == '@') then --string
 						nobj[k] = v:sub(2);
 					else
@@ -221,13 +224,13 @@ function reader.create_protocol(obj, options)
 					end
 				end
 			end
-			
-			return (opt.next and _create(nobj, opt.next)) or nobj;
+			return nobj;
+		else
+			return obj
 		end
-		return obj
 	end
 
-	return _create(obj, options)
+	return _create(options)
 end
 reader.createProtocol = reader.create_protocol
 
@@ -242,8 +245,8 @@ local function test()
 	print(obj:execute(('00A4000002A314'):decode()):encode())
 	print(obj:execute(('00B00000FF'):decode()):encode())
 	
-	local protocol = reader.create_protocol(obj, {name='rsaencrypt', next={name='hexstring'}})
-	protocol:execute('0084000008')
+	local protocol = reader.create_protocol(obj, {name='hexstring', subopt={name='rsaencrypt'}})
+	print(protocol:execute('0084000008'))
 
 	--obj = nil --collectgarbage("collect")
 	obj:disconnect()

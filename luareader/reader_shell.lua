@@ -11,8 +11,8 @@ function connect(reader_name)
 	return ''
 end
 
-function transmit(apdu)
-	return assert(reader_obj:transmit(apdu, 6000))
+function transmit(apdu, timeout)
+	return assert(reader_obj:transmit(apdu, timeout))
 end
 
 function disconnect()
