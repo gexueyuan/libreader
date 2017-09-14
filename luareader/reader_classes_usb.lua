@@ -123,6 +123,8 @@ local function reader_classes_usb_init()
 					chkret('detach_kernel_driver', obj.fd:detach_kernel_driver(obj.interfaceNumber))
 				end
 				assert(obj.fd:claim_interface(obj.interfaceNumber))
+				
+				base.flush(obj)
 				return
 			end
 		end
@@ -139,6 +141,12 @@ local function reader_classes_usb_init()
 		assert(obj.fd:reset_device())
 	end
 	
+	function base.flush(obj)
+		while(obj.fd:bulk_transfer(obj.inputEndpoint, 2048, 10)) do
+		end
+	end
+
+
 	--[hid] list,match,connect,disconnect,flush,write,read
 	function hid.list()
 		return base.list(0x0010)
@@ -155,10 +163,8 @@ local function reader_classes_usb_init()
 	hid.connect = base.connect
 	hid.disconnect = base.disconnect
 	hid.reset_device = base.reset_device
+	hid.flush = base.flush
 	
-	function hid.flush(obj) --目前掌握知识无法实现该功能，2017-5-11
-	end	
-		
 	function hid.write(obj, data, timeout)
 		local result = chkret('[hid]bulk_transfer', obj.fd:bulk_transfer(obj.outputEndpoint, data, timeout))
 		assert(result==#data, '[hid]bulk_transfer send data result:' .. result .. ', error=[-1]')
